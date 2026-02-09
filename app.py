@@ -61,7 +61,7 @@ with st.sidebar:
     pause_time = st.slider("구절 사이 쉬는 시간 (초)", 0.0, 5.0, 1.0, 0.5)
     
     st.write("---")
-    bgm_upload = st.file_upload("배경음악(BGM) 업로드 (선택)", type=["mp3", "wav"])
+    bgm_upload = st.file_uploader("배경음악(BGM) 업로드 (선택)", type=["mp3", "wav"])
 
 # 메인 입력창
 text_input = st.text_area("성경 구절 (한 줄씩 번갈아 입력)", height=300, 
@@ -87,4 +87,5 @@ if st.button("고퀄리티 오디오 생성", use_container_width=True):
     else:
 
         st.warning("텍스트를 입력해 주세요.")
+
 
