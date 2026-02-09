@@ -1,3 +1,11 @@
+try:
+    import audioop
+except ImportError:
+    import audioop_lpm as audioop
+    import sys
+    sys.modules['audioop'] = audioop
+
+
 import streamlit as st
 import asyncio
 import edge_tts
@@ -85,4 +93,5 @@ if st.button("고퀄리티 오디오 생성", use_container_width=True):
             except Exception as e:
                 st.error(f"오류 발생: {e}")
     else:
+
         st.warning("텍스트를 입력해 주세요.")
