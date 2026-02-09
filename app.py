@@ -4,6 +4,18 @@ import edge_tts
 import os
 from pydub import AudioSegment
 import io
+import sys
+
+# --- 3.12 환경 및 오디오 처리 라이브러리 호환성 체크 ---
+try:
+    import audioop
+except ImportError:
+    # 파이썬 3.13 이상 대응을 위한 코드 (3.12에서는 통과됨)
+    try:
+        import audioop_lpm as audioop
+        sys.modules['audioop'] = audioop
+    except ImportError:
+        pass
 
 # --- 설정 및 데이터 ---
 VOICES = {
@@ -25,70 +37,36 @@ async def generate_audio_segment(text, voice, rate):
         if chunk["type"] == "audio":
             audio_data += chunk["data"]
     
+    if not audio_data:
+        return None
+        
     return AudioSegment.from_file(io.BytesIO(audio_data), format="mp3")
 
 async def process_narration(text_data, selected_voice, speed, pause_sec, bgm_file):
-    # 빈 줄을 제외하고 문장 단위로 나눔
-    lines = [line.strip() for line in text_data.split('\n') if line.strip()]
+    # 줄 단위로 분리 (빈 줄을 제거하지 않음 - 문단 구분용)
+    raw_lines = text_data.split('\n')
     combined = AudioSegment.empty()
-    # 문장 사이 쉬는 시간
-    pause = AudioSegment.silent(duration=int(pause_sec * 1000))
+    
+    # 일반 문장 사이 쉬는 시간 (슬라이더 값)
+    normal_pause = AudioSegment.silent(duration=int(pause_sec * 1000))
+    # 문단 사이 쉬는 시간 (슬라이더 값의 3배로 설정 - 더 길게 쉬고 싶으면 이 숫자를 조절하세요)
+    paragraph_pause = AudioSegment.silent(duration=int(pause_sec * 3000))
 
-    for line in lines:
-        # 선택된 단 한 명의 성우가 모든 문장을 읽음
-        segment = await generate_audio_segment(line, selected_voice, speed)
-        combined += segment + pause
+    for line in raw_lines:
+        clean_line = line.strip()
+        
+        if not clean_line:
+            # 빈 줄을 만나면 문단 간격을 추가 (이미 문장이 끝났을 때의 간격이 있으므로 합산됨)
+            combined += paragraph_pause
+            continue
+            
+        # 텍스트가 있는 줄 음성 생성
+        segment = await generate_audio_segment(clean_line, selected_voice, speed)
+        if segment:
+            combined += segment + normal_pause
 
     # BGM 합성 로직
     if bgm_file is not None:
+        # 업로드된 파일을 pydub으로 읽기
         bgm = AudioSegment.from_file(bgm_file)
-        bgm = bgm - 25 # 배경음악 볼륨 조정
-        if len(bgm) < len(combined):
-            bgm = bgm * (len(combined) // len(bgm) + 1)
-        bgm = bgm[:len(combined)]
-        combined = combined.overlay(bgm)
-
-    return combined
-
-# --- UI 레이아웃 ---
-st.set_page_config(page_title="나만의 오디오북 제작기", layout="wide")
-st.title("🎙️ 통합 나레이션 제작 스튜디오")
-
-with st.sidebar:
-    st.header("👤 성우 및 효과 설정")
-    # 이제 성우를 한 명만 선택합니다.
-    chosen_voice_name = st.selectbox("낭독할 성우 선택", list(VOICES.keys()))
-    chosen_voice_code = VOICES[chosen_voice_name]
-    
-    speed = st.slider("읽기 속도 조절 (%)", -50, 50, 0, step=5)
-    pause_time = st.slider("문장 사이 간격 (초)", 0.0, 5.0, 1.0, 0.5)
-    
-    st.write("---")
-    bgm_upload = st.file_uploader("배경음악(BGM) 업로드", type=["mp3", "wav"])
-
-# 메인 입력창
-text_input = st.text_area("낭독할 스크립트 입력 (한글/영어 자유롭게)", height=400, 
-                          placeholder="여기에 낭독할 내용을 입력하세요. 한글과 영어가 섞여 있어도 선택한 성우가 모두 읽습니다.")
-
-if st.button("오디오 제작 시작", use_container_width=True):
-    if text_input:
-        with st.spinner(f"{chosen_voice_name} 성우가 낭독 중입니다..."):
-            try:
-                # 3.12 환경을 위한 이벤트 루프 설정
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                final_audio = loop.run_until_complete(process_narration(
-                    text_input, chosen_voice_code, speed, pause_time, bgm_upload
-                ))
-                
-                # 결과 출력
-                buffer = io.BytesIO()
-                final_audio.export(buffer, format="mp3")
-                st.success("✅ 제작 완료!")
-                st.audio(buffer.getvalue(), format="audio/mp3")
-                st.download_button("최종 MP3 다운로드", buffer.getvalue(), file_name="narration_output.mp3")
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
-    else:
-        st.warning("내용을 입력해 주세요.")
+        # B
